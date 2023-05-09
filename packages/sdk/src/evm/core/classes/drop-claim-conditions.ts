@@ -442,7 +442,7 @@ export class DropClaimConditions<
 
       if (!hasAllowList || (hasAllowList && !allowListEntry)) {
         if (maxClaimable.lte(claimedSupply) || maxClaimable.eq(0)) {
-          reasons.push(ClaimEligibility.AddressNotAllowed);
+          reasons.push(ClaimEligibility.MaxClaimed);
           return reasons;
         }
       }

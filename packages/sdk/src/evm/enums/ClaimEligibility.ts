@@ -16,4 +16,6 @@ export enum ClaimEligibility {
   NoWallet = "No wallet connected.",
 
   Unknown = "No claim conditions found.",
+
+  MaxClaimed = "Max claimable reached.",
 }
