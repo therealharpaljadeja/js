@@ -168,6 +168,13 @@ export class SmartWalletConnector extends Connector<SmartWalletConnectionArgs> {
     };
   }
 
+  async addSigner(newSigner: string) {
+    if (!this.accountApi) {
+      throw new Error("Account not connected");
+    }
+    return this.accountApi.addSigner(newSigner);
+  }
+
   private defaultFactoryInfo(): FactoryContractInfo {
     return {
       createAccount: async (factory: SmartContract, owner: string) => {

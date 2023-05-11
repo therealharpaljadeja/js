@@ -13,6 +13,7 @@ import type {
 import { EVMWallet } from "../../interfaces";
 import { WalletOptions } from "../../wallets/base";
 import { BaseApiParams } from "./lib/base-api";
+import { Chain } from "@thirdweb-dev/chains";
 
 export type SmartWalletConfig = {
   chain: ChainOrRpcUrl;
@@ -32,14 +33,14 @@ export type SmartWalletOptions = WalletOptions<{}>;
 export interface AccountApiParams
   extends Omit<BaseApiParams, "provider">,
     ContractInfo {
-  chain: ChainOrRpcUrl;
+  chain: Chain;
   localSigner: Signer;
   factoryAddress: string;
   accountAddress?: string;
 }
 
 export interface ProviderConfig extends ContractInfo {
-  chain: ChainOrRpcUrl;
+  chain: Chain;
   localSigner: Signer;
   entryPointAddress: string;
   thirdwebApiKey: string;

@@ -1,4 +1,4 @@
-import { LOCAL_NODE_PKEY, SmartContract, ThirdwebSDK } from "@thirdweb-dev/sdk";
+import { SmartContract, ThirdwebSDK, UserWallet } from "@thirdweb-dev/sdk";
 import { BigNumberish, BigNumber, ethers } from "ethers";
 import { arrayify, hexConcat } from "ethers/lib/utils";
 import { AccountApiParams } from "../types";
@@ -23,7 +23,7 @@ export class AccountAPI extends BaseAccountAPI {
     // Technically dont need the signer here, but we need to encode/estimate gas with it so a signer is required
     // We don't want to use the localSigner directly since it might be connected to another chain
     // so we just use the public hardhat pkey instead
-    this.sdk = ThirdwebSDK.fromPrivateKey(LOCAL_NODE_PKEY, params.chain);
+    this.sdk = ThirdwebSDK.fromSigner(params.localSigner, params.chain);
   }
 
   async getChainId() {
@@ -32,16 +32,29 @@ export class AccountAPI extends BaseAccountAPI {
 
   async getAccountContract(): Promise<SmartContract> {
     if (!this.accountContract) {
+      const sdkChainId = (await this.sdk.getProvider().getNetwork()).chainId;
+      const desiredChainId = this.params.chain.chainId;
+      if (sdkChainId !== desiredChainId) {
+        throw new Error(
+          `Personal Wallet is on the wrong chain. Personal wallet is on ${sdkChainId} but desired chain is ${desiredChainId}`,
+        );
+      }
       if (this.params.accountInfo?.abi) {
         this.accountContract = await this.sdk.getContract(
           await this.getAccountAddress(),
           this.params.accountInfo.abi,
         );
       } else {
-        this.accountContract = await this.sdk.getContract(
-          await this.getAccountAddress(),
-          MINIMAL_ACCOUNT_ABI,
-        );
+        try {
+          this.accountContract = await this.sdk.getContract(
+            await this.getAccountAddress(),
+          );
+        } catch (e) {
+          this.accountContract = await this.sdk.getContract(
+            await this.getAccountAddress(),
+            MINIMAL_ACCOUNT_ABI,
+          );
+        }
       }
     }
     return this.accountContract;
@@ -122,12 +135,52 @@ export class AccountAPI extends BaseAccountAPI {
     datas: string[],
   ): Promise<string> {
     const accountContract = await this.getAccountContract();
-    const tx = await accountContract.prepare("executeBatch", [
+    const tx = accountContract.prepare("executeBatch", [
       targets,
       values,
       datas,
     ]);
     return tx.encode();
+  }
+
+  async addSigner(newSignerAddress: string) {
+    const accountContract = await this.getAccountContract();
+
+    const userWallet = new UserWallet(this.params.localSigner, {});
+    const chainId = await this.getChainId();
+    const { payload, signature } = await userWallet.signTypedData(
+      {
+        name: "PermissionsSig",
+        version: "1",
+        verifyingContract: accountContract.getAddress(),
+        chainId,
+      },
+      {
+        RoleRequest: [
+          { name: "role", type: "bytes32" },
+          { name: "target", type: "address" },
+          { name: "action", type: "uint8" },
+          { name: "validityStartTimestamp", type: "uint128" },
+          { name: "validityEndTimestamp", type: "uint128" },
+          { name: "uid", type: "bytes32" },
+        ],
+      },
+      {
+        role: ethers.utils.id("SIGNER_ROLE"),
+        target: newSignerAddress,
+        action: 0, // grant
+        validityStartTimestamp: 0,
+        validityEndTimestamp: BigNumber.from(2).pow(128).sub(1),
+        uid: ethers.utils.randomBytes(32),
+      },
+    );
+    console.log("payload", payload);
+    console.log("signature", signature);
+    const tx = await accountContract.call("grantRole", [
+      payload.message,
+      signature,
+    ]);
+    return tx;
   }
 
   async signUserOpHash(userOpHash: string): Promise<string> {

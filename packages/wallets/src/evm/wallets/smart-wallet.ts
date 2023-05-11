@@ -61,6 +61,11 @@ export class SmartWallet extends AbstractClientWallet<
     return connector.executeBatch(transactions);
   }
 
+  async addSigner(newSigner: string) {
+    const connector = await this.getConnector();
+    return connector.addSigner(newSigner);
+  }
+
   autoConnect(params: ConnectParams<SmartWalletConnectionArgs>) {
     return this.connect(params);
   }
