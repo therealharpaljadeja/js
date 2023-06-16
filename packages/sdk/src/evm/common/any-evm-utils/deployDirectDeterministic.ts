@@ -21,6 +21,29 @@ import { getCreate2FactoryAddress } from "./getCreate2FactoryAddress";
  * Direct deploy a contract at a deterministic address, using Create2 method
  * Address depends on the Create2 factory address and salt (if provided).
  *
+ * @example
+ * ```javascript
+ *   const bytecode = ""         // contract bytecode here
+ *   const abi = ""              // contract abi here
+ *   const salt = ""             // Specify a salt for Create2 - if not provided, bytecode-hash will be used
+ *   const constructorArgs = []  // input args for constructor
+ *
+ *   const sdk = ThirdwebSDK.fromPrivateKey(
+ *     `private key here`,
+ *     "goerli"
+ *   );
+ *
+ *   const signer = (await sdk.getSigner());
+ *
+ *   await directDeployDeterministic(
+ *     bytecode,
+ *     abi,
+ *     signer,
+ *     constructorArgs,
+ *     salt
+ *   );
+ * ```
+ *
  * @public
  *
  * @param bytecode
@@ -134,6 +157,36 @@ export async function directDeployDeterministicWithUri(
   );
 }
 
+/**
+ * Predict address of the contract in advance.
+ * Address depends on the Create2 factory address and salt (if provided).
+ *
+ * @example
+ * ```javascript
+ *   const bytecode = ""         // contract bytecode here
+ *   const abi = ""              // contract abi here
+ *   const salt = ""             // Specify a salt for Create2 - if not provided, bytecode-hash will be used
+ *   const constructorArgs = []  // input args for constructor
+ *
+ *   const sdk = new ThirdwebSDK("goerli");
+ *
+ *   await predictAddressDeterministic(
+ *     bytecode,
+ *     abi,
+ *     sdk.getProvider(),
+ *     constructorArgs,
+ *     salt
+ *   );
+ * ```
+ *
+ * @public
+ *
+ * @param bytecode
+ * @param abi
+ * @param provider
+ * @param constructorArgs
+ * @param saltForCreate2
+ */
 export async function predictAddressDeterministic(
   bytecode: string,
   abi: AbiInput,
@@ -175,6 +228,18 @@ export async function predictAddressDeterministic(
   return address;
 }
 
+/**
+ * Predict address of the contract in advance.
+ * Address depends on the Create2 factory address and salt (if provided).
+ *
+ * @public
+ *
+ * @param publishMetadataUri
+ * @param provider
+ * @param storage
+ * @param constructorArgs
+ * @param saltForCreate2
+ */
 export async function predictAddressDeterministicWithUri(
   publishMetadataUri: string,
   provider: providers.Provider,
