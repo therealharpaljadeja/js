@@ -13,6 +13,7 @@ import { BigNumber, constants } from "ethers";
 import { DEFAULT_QUERY_ALL_COUNT } from "../../../core/schema/QueryParams";
 import type { Erc721 } from "./erc-721";
 import { Erc721Enumerable } from "./erc-721-enumerable";
+import { Multicall, ContractCall } from "pilum";
 
 /**
  * List ERC721 NFTs
@@ -29,6 +30,7 @@ export class Erc721Supply implements DetectableFeature {
   featureName = FEATURE_NFT_SUPPLY.name;
   private contractWrapper: ContractWrapper<BaseERC721 & IERC721Supply>;
   private erc721: Erc721;
+  private multicall: Multicall;
 
   public owned: Erc721Enumerable | undefined;
 
@@ -39,6 +41,7 @@ export class Erc721Supply implements DetectableFeature {
     this.erc721 = erc721;
     this.contractWrapper = contractWrapper;
     this.owned = this.detectErc721Owned();
+    this.multicall = new Multicall({ provider: contractWrapper.getProvider() });
   }
 
   /**
@@ -76,11 +79,32 @@ export class Erc721Supply implements DetectableFeature {
    */
   public async allOwners() {
     let totalCount: BigNumber;
+
+    // 1. Only look for the total claimed supply if the contract supports it
     try {
       totalCount = await this.erc721.totalClaimedSupply();
     } catch (e) {
       totalCount = await this.totalCount();
     }
+
+    // 2. Use multicall3 if available
+    const calls: ContractCall[] = [
+      ...new Array(await this.totalCount()).keys(),
+    ].map((i) => ({
+      address: this.contractWrapper.readContract.address,
+      method: "ownerOf",
+      params: [i],
+      abi: this.contractWrapper.abi as any[],
+      value: 0,
+      reference: `ownerOf(${i})`,
+      allowFailure: true,
+    }));
+    const { results } = await this.multicall.call(calls);
+    //const filtered = results.filter((r) => r.returnData !== "0x");
+
+    // Print the call result
+    console.log("results", results.length);
+    console.log(results.map((r) => r.returnData.toString()));
 
     // TODO use multicall3 if available
     // TODO can't call toNumber() here, this can be a very large number

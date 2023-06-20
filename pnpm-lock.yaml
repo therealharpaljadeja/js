@@ -951,6 +951,9 @@ importers:
       merkletreejs:
         specifier: ^0.2.24
         version: 0.2.32
+      pilum:
+        specifier: ^3.0.0
+        version: 3.0.0
       tiny-invariant:
         specifier: ^1.2.0
         version: 1.3.1
@@ -23345,6 +23348,16 @@ packages:
   /pify@5.0.0:
     resolution: {integrity: sha512-eW/gHNMlxdSP6dmG6uJip6FXN0EQBwm2clYYd8Wul42Cwu/DK8HEftzsapcNdYe2MfLiIwZqsDk2RDEsTE79hA==}
     engines: {node: '>=10'}
+    dev: false
+
+  /pilum@3.0.0:
+    resolution: {integrity: sha512-1ch+iDMAoTj2+4iI8RH44xpG/p0FKI2nKgXlCb9NwTtthtfRFvbeTJIRk2WZsjgIQeLYXKKzoZtNl74551ml6Q==}
+    dependencies:
+      '@ethersproject/providers': 5.7.2
+      ethers: 5.7.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
     dev: false
 
   /pino-abstract-transport@0.5.0:

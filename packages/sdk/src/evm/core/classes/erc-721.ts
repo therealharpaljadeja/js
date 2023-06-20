@@ -387,13 +387,13 @@ export class Erc721<
     if (walletAddress) {
       walletAddress = await resolveAddress(walletAddress);
     }
-
     if (this.query?.owned) {
       return this.query.owned.all(walletAddress);
     } else {
       const address =
         walletAddress || (await this.contractWrapper.getSignerAddress());
       const allOwners = await this.getAllOwners();
+      console.log("allOwners", allOwners.length);
       return Promise.all(
         (allOwners || [])
           .filter((i) => address?.toLowerCase() === i.owner?.toLowerCase())
