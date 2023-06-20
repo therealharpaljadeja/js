@@ -9,7 +9,7 @@ import type {
   IERC721Enumerable,
   IERC721Supply,
 } from "@thirdweb-dev/contracts-js";
-import { BigNumber, constants } from "ethers";
+import { BigNumber, BigNumberish, constants } from "ethers";
 import { DEFAULT_QUERY_ALL_COUNT } from "../../../core/schema/QueryParams";
 import type { Erc721 } from "./erc-721";
 import { Erc721Enumerable } from "./erc-721-enumerable";
@@ -77,7 +77,9 @@ export class Erc721Supply implements DetectableFeature {
    * Return all the owners of each token id in this contract
    * @returns
    */
-  public async allOwners() {
+  public async allOwners(): Promise<
+    { tokenId: BigNumberish; owner: string }[]
+  > {
     let totalCount: BigNumber;
 
     // 1. Only look for the total claimed supply if the contract supports it
@@ -88,36 +90,42 @@ export class Erc721Supply implements DetectableFeature {
     }
 
     // 2. Use multicall3 if available
-    const calls: ContractCall[] = [
-      ...new Array(await this.totalCount()).keys(),
-    ].map((i) => ({
-      address: this.contractWrapper.readContract.address,
-      method: "ownerOf",
-      params: [i],
-      abi: this.contractWrapper.abi as any[],
-      value: 0,
-      reference: `ownerOf(${i})`,
-      allowFailure: true,
-    }));
-    const { results } = await this.multicall.call(calls);
-    //const filtered = results.filter((r) => r.returnData !== "0x");
-
-    // Print the call result
-    console.log("results", results.length);
-    console.log(results.map((r) => r.returnData.toString()));
-
-    // TODO use multicall3 if available
-    // TODO can't call toNumber() here, this can be a very large number
-    return (
-      await Promise.all(
-        [...new Array(totalCount.toNumber()).keys()].map(async (i) => ({
-          tokenId: i,
-          owner: await this.erc721
-            .ownerOf(i)
-            .catch(() => constants.AddressZero),
-        })),
-      )
-    ).filter((o) => o.owner !== constants.AddressZero);
+    try {
+      const calls: ContractCall[] = [
+        ...new Array(totalCount.toNumber()).keys(),
+      ].map((i) => ({
+        address: this.contractWrapper.readContract.address,
+        method: "ownerOf",
+        params: [i],
+        abi: this.contractWrapper.abi as any[],
+        value: 0,
+        reference: `ownerOf(${i})`,
+        allowFailure: true,
+      }));
+      const { results } = await this.multicall.call(calls);
+      return results
+        .filter((r) => r.returnData[0]) // filter out failures
+        .map((r) => ({
+          tokenId: r.params[0],
+          owner:
+            this.contractWrapper.readContract.interface.decodeFunctionResult(
+              "ownerOf",
+              r.returnData[1],
+            )[0],
+        }));
+    } catch (e) {
+      // 3. last resort, call ownerOf for each tokenId
+      return (
+        await Promise.all(
+          [...new Array(totalCount.toNumber()).keys()].map(async (i) => ({
+            tokenId: i,
+            owner: await this.erc721
+              .ownerOf(i)
+              .catch(() => constants.AddressZero),
+          })),
+        )
+      ).filter((o) => o.owner !== constants.AddressZero);
+    }
   }
 
   /**

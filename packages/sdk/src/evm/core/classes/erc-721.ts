@@ -393,7 +393,6 @@ export class Erc721<
       const address =
         walletAddress || (await this.contractWrapper.getSignerAddress());
       const allOwners = await this.getAllOwners();
-      console.log("allOwners", allOwners.length);
       return Promise.all(
         (allOwners || [])
           .filter((i) => address?.toLowerCase() === i.owner?.toLowerCase())
