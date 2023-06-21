@@ -91,9 +91,8 @@ export class Erc721Supply implements DetectableFeature {
 
     // 2. Use multicall3 if available
     try {
-      const calls: ContractCall[] = [
-        ...new Array(totalCount.toNumber()).keys(),
-      ].map((i) => ({
+      console.log("using multicall3");
+      const calls: ContractCall[] = [...new Array(5000).keys()].map((i) => ({
         address: this.contractWrapper.readContract.address,
         method: "ownerOf",
         params: [i],
@@ -102,19 +101,62 @@ export class Erc721Supply implements DetectableFeature {
         reference: `ownerOf(${i})`,
         allowFailure: true,
       }));
-      const { results } = await this.multicall.call(calls);
-      return results
-        .filter((r) => r.returnData[0]) // filter out failures
-        .map((r) => ({
-          tokenId: r.params[0],
-          owner:
-            this.contractWrapper.readContract.interface.decodeFunctionResult(
-              "ownerOf",
-              r.returnData[1],
-            )[0],
-        }));
+      const encodedCalls = Multicall.encode(calls);
+      const calculatedGas = BigNumber.from(21000 + 68).mul(
+        BigNumber.from(
+          encodedCalls
+            .map((c) => c.encodedData.length)
+            .reduce((a, b) => a + b, 0),
+        ),
+      );
+      console.log("CalculatedGas", calculatedGas.toString());
+      const limit = (
+        await this.contractWrapper.getProvider().getBlock("latest")
+      ).gasLimit;
+      console.log("limit", limit.toString());
+      const batches = calculatedGas.div(limit).toNumber();
+      const step = 100; //totalCount.div(batches).toNumber();
+      console.log("batches", batches);
+      console.log("steps", step);
+
+      // Promise all batches
+      const results = await Promise.all(
+        [...new Array(totalCount.toNumber() / step).keys()].map(async (i) => {
+          const start = i * step;
+          const end = Math.min((i + 1) * step, totalCount.toNumber());
+          console.log("start", start);
+          console.log("end", end);
+          const { results: batchResult } = await this.multicall.call(
+            calls.slice(start, end),
+          );
+          return batchResult
+            .filter((r) => r.returnData[0]) // filter out failures
+            .map((r) => ({
+              tokenId: r.params[0] as BigNumberish,
+              owner:
+                this.contractWrapper.readContract.interface.decodeFunctionResult(
+                  "ownerOf",
+                  r.returnData[1],
+                )[0] as string,
+            }));
+        }),
+      );
+
+      // const { results } = await this.multicall.call(calls);
+      return results.flat();
+      // .filter((r) => r.returnData[0]) // filter out failures
+      // .map((r) => ({
+      //   tokenId: r.params[0],
+      //   owner:
+      //     this.contractWrapper.readContract.interface.decodeFunctionResult(
+      //       "ownerOf",
+      //       r.returnData[1],
+      //     )[0],
+      // }));
     } catch (e) {
       // 3. last resort, call ownerOf for each tokenId
+      console.log(e);
+      console.log("using brute force");
       return (
         await Promise.all(
           [...new Array(totalCount.toNumber()).keys()].map(async (i) => ({
