@@ -167,6 +167,8 @@ export {
   useTransferNFT,
   useAirdropNFT,
   useBurnNFT,
+  useSharedMetadata,
+  useSetSharedMetadata,
 } from "./hooks/async/nft";
 
 // roles
