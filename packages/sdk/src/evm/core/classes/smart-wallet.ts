@@ -25,11 +25,10 @@ import { buildTransactionFunction } from "../../common/transactions";
 import { SmartWalletFactory } from "./smart-wallet-factory";
 import { resolveOrGenerateId } from "../../common/signature-minting";
 import { AddressOrEns, RawDateSchema } from "../../schema";
-import { resolveAddress } from "../../common";
+import { resolveAddress, toEther } from "../../common";
 
 export class SmartWallet<TContract extends IAccountCore>
-  implements DetectableFeature
-{
+  implements DetectableFeature {
   featureName = FEATURE_SMART_WALLET.name;
   private contractWrapper: ContractWrapper<IAccountCore>;
 
@@ -50,12 +49,52 @@ export class SmartWallet<TContract extends IAccountCore>
 
   private hasDuplicateSigners(signers: SignerWithRestrictionsBatchInput): boolean {
     const encounteredSigners = new Set();
-  
+
     return signers.map(item => item.signer).some(signer => {
       const isDuplicate = encounteredSigners.has(signer);
       encounteredSigners.add(signer);
       return isDuplicate;
     });
+  }
+
+  private generateScopedActions = async (signer: string, restrictions: any): Promise<string[]> => {
+    const role = utils.solidityKeccak256(["string"], [signer]);
+
+    const parsedRestrictions = await AccessRestrictionsSchema.parseAsync(restrictions);
+
+    // Get role restrictions struct.
+    const roleRestrictions: IAccountPermissions.RoleRestrictionsStruct = {
+      role,
+      approvedTargets: parsedRestrictions.approvedCallTargets,
+      maxValuePerTransaction: toEther(parsedRestrictions.nativeTokenLimitPerTransaction),
+      startTimestamp: RawDateSchema.parse(parsedRestrictions.startDate),
+      endTimestamp: RawDateSchema.parse(parsedRestrictions.expirationDate),
+    };
+
+    const encodedRoleRestrictions = this.contractWrapper.readContract.interface.encodeFunctionData(
+      "setRoleRestrictions",
+      [roleRestrictions]
+    );
+
+    const { payload, signature } = await this.generatePayload(
+      signer,
+      RoleAction.GRANT
+    );
+
+    const encodedChangeRole = this.contractWrapper.readContract.interface.encodeFunctionData(
+      "changeRole",
+      [payload, signature]
+    );
+
+    // Return the encoded actions in an array
+    return [encodedRoleRestrictions, encodedChangeRole];
+  };
+
+  private encodeSetAdmin(admin: string, state: boolean) {
+    return this.contractWrapper.readContract.interface.encodeFunctionData(
+      "setAdmin",
+      [admin, state],
+    );
   }
 
   /**
@@ -106,7 +145,7 @@ export class SmartWallet<TContract extends IAccountCore>
       validityEndTimestamp: BigNumber.from(
         Math.floor(
           new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10).getTime() /
-            1000,
+          1000,
         ),
       ),
       uid: resolveOrGenerateId(undefined),
@@ -325,7 +364,7 @@ export class SmartWallet<TContract extends IAccountCore>
         role,
         approvedTargets: parsedRestrictions.approvedCallTargets,
         maxValuePerTransaction:
-          parsedRestrictions.nativeTokenLimitPerTransaction,
+          toEther(parsedRestrictions.nativeTokenLimitPerTransaction),
         startTimestamp: parsedRestrictions.startDate,
         endTimestamp: parsedRestrictions.expirationDate,
       };
@@ -510,7 +549,7 @@ export class SmartWallet<TContract extends IAccountCore>
         role: currentRole,
         approvedTargets: parsedRestrictions.approvedCallTargets,
         maxValuePerTransaction:
-          parsedRestrictions.nativeTokenLimitPerTransaction,
+          toEther(parsedRestrictions.nativeTokenLimitPerTransaction),
         startTimestamp: parsedRestrictions.startDate,
         endTimestamp: parsedRestrictions.expirationDate,
       };
@@ -590,174 +629,71 @@ export class SmartWallet<TContract extends IAccountCore>
    */
   setAccess = /* @__PURE__ */ buildTransactionFunction(
     async (permissionsSnapshot: SignerWithRestrictionsBatchInput): Promise<Transaction> => {
-
-      /**
-       * All cases
-       * 
-       * - Add new admin :check:
-       * - Remove current admin :check:
-       * - Add new scoped :check:
-       * - Remove current scoped :check:
-       * - Update current scoped :check:
-       * - Current admin -> new scoped :check:
-       * - Current scoped -> new admin :check:
-      **/
-
-      // No duplicate signers in input!
-      if(this.hasDuplicateSigners(permissionsSnapshot)) {
-        throw new Error("Duplicate signers found in input.")
+      if (this.hasDuplicateSigners(permissionsSnapshot)) {
+        throw new Error("Duplicate signers found in input.");
       }
 
       const currentPermissionsSnapshot = await this.getSignersWithRestrictions();
-
-      // Performing a multicall.
       const encoded: string[] = [];
-
-      // First make all calls related to admin access.
       const allCurrentAdmins = currentPermissionsSnapshot.filter((result) => result.isAdmin).map((result) => result.signer);
       const allNewAdmins = permissionsSnapshot.filter((result) => result.isAdmin).map((result) => result.signer);
 
-      // All remove-admin actions.
-      for(const currentAdmin of allCurrentAdmins) {
-        if(!allNewAdmins.includes(currentAdmin)) {
-          encoded.push(
-            this.contractWrapper.readContract.interface.encodeFunctionData(
-              "setAdmin",
-              [currentAdmin, false],
-            ),
-          )
-        }
-      }
+      const currentAdminsToRemove = allCurrentAdmins
+        .filter((currentAdmin) => !allNewAdmins.includes(currentAdmin))
+        .map((admin) => this.encodeSetAdmin(admin, false));
 
-      // All add-admin actions.
       const toRemoveAsScoped: Record<string, string> = {};
-      for(const newAdmin of allNewAdmins) {
-        if(!allCurrentAdmins.includes(newAdmin)) {
 
-          const data = this.contractWrapper.readContract.interface.encodeFunctionData(
-            "setAdmin",
-            [newAdmin, true],
-          );
-          
+      const newAdminsToAdd = await Promise.all(
+        allNewAdmins
+          .filter((newAdmin) => !allCurrentAdmins.includes(newAdmin))
+          .map(async (admin) => {
+            const data = this.encodeSetAdmin(admin, true);
+            const currentRole = await this.contractWrapper.readContract.getRoleRestrictionsForAccount(admin);
 
-          // If the new admin is already a scoped account, we need to remove them as a scoped account first.
-          const currentRole = (await this.contractWrapper.readContract.getRoleRestrictionsForAccount(newAdmin)).role;
-          if(currentRole === this.emptyRole) {
-            encoded.push(
-              data,
-            )
-          } else {
-            toRemoveAsScoped[newAdmin] = data;
-          }
-        }
-      }
+            if (currentRole.role !== this.emptyRole) {
+              toRemoveAsScoped[admin] = data;
+            }
 
-      // All scoped actions.
+            return data;
+          }),
+      );
+
+      const newAdminsEncoded = newAdminsToAdd.filter((data) => !Object.values(toRemoveAsScoped).includes(data));
+      const scopedToAdmins = Object.values(toRemoveAsScoped);
+
       const allCurrentScoped = currentPermissionsSnapshot.filter((result) => !result.isAdmin).map((result) => result.signer);
       const allNewScoped = permissionsSnapshot.filter((result) => !result.isAdmin).map((result) => result.signer);
 
-      // All remove-scoped actions.
-      const newAdminsToRemoveAsScoped = Object.keys(toRemoveAsScoped);
-      for(const currentScoped of allCurrentScoped) {
-        if(!allNewScoped.includes(currentScoped)) {
+      const addScopedPromises = allNewScoped.filter(newScoped => !allCurrentScoped.includes(newScoped))
+        .map(newScoped => {
+          const restrictions = permissionsSnapshot.find(result => result.signer === newScoped)?.restrictions;
+          return this.generateScopedActions(newScoped, restrictions);
+        });
 
-          const { payload, signature } = await this.generatePayload(
-            currentScoped,
-            RoleAction.REVOKE,
-          );
+      const addScopedEncoded = await Promise.all(addScopedPromises);
 
-          encoded.push(
-            this.contractWrapper.readContract.interface.encodeFunctionData(
-              "changeRole",
-              [payload, signature],
-            ),
-          )
+      const updateScopedPromises = allNewScoped.filter(newScoped => allCurrentScoped.includes(newScoped))
+        .map(newScoped => {
+          const restrictions = permissionsSnapshot.find(result => result.signer === newScoped)?.restrictions;
+          return this.generateScopedActions(newScoped, restrictions);
+        });
 
-          if(newAdminsToRemoveAsScoped.includes(currentScoped)) {
-            encoded.push(
-              toRemoveAsScoped[currentScoped],
-            )
-          }
-        }
-      }
+      const updateScopedEncoded = await Promise.all(updateScopedPromises);
 
-      // All add-scoped actions.
-      for(const newScoped of allNewScoped) {
-        if(!allCurrentScoped.includes(newScoped)) {
+      encoded.push(
+        ...currentAdminsToRemove,
+        ...newAdminsEncoded,
+        ...scopedToAdmins,
+        ...addScopedEncoded.flat(),
+        ...updateScopedEncoded.flat(),
+      );
 
-          // Derive role for target signer.
-          const role = utils.solidityKeccak256(["string"], [newScoped]);
-          
-          const parsedRestrictions = await AccessRestrictionsSchema.parseAsync(
-            permissionsSnapshot.find((result) => result.signer === newScoped)?.restrictions
-          );
-
-          // Get role restrictions struct.
-          const roleRestrictions: IAccountPermissions.RoleRestrictionsStruct = {
-            role,
-            approvedTargets: parsedRestrictions.approvedCallTargets,
-            maxValuePerTransaction:
-            parsedRestrictions.nativeTokenLimitPerTransaction,
-            startTimestamp: RawDateSchema.parse(parsedRestrictions.startDate),
-            endTimestamp: RawDateSchema.parse(parsedRestrictions.expirationDate),
-          };
-
-          encoded.push(
-            this.contractWrapper.readContract.interface.encodeFunctionData(
-              "setRoleRestrictions",
-              [roleRestrictions],
-            ),
-          );
-
-          const { payload, signature } = await this.generatePayload(
-            newScoped,
-            RoleAction.GRANT,
-          );
-
-          encoded.push(
-            this.contractWrapper.readContract.interface.encodeFunctionData(
-              "changeRole",
-              [payload, signature],
-            ),
-          )
-        }
-      }
-
-      // All update-scoped actions.
-      for(const currentScoped of allCurrentScoped) {
-        if(allNewScoped.includes(currentScoped)) {
-          // Derive role for target signer.
-          const role = utils.solidityKeccak256(["string"], [currentScoped]);
-          
-          const parsedRestrictions = await AccessRestrictionsSchema.parseAsync(
-            permissionsSnapshot.find((result) => result.signer === currentScoped)?.restrictions
-          );
-
-          // Get role restrictions struct.
-          const roleRestrictions: IAccountPermissions.RoleRestrictionsStruct = {
-            role,
-            approvedTargets: parsedRestrictions.approvedCallTargets,
-            maxValuePerTransaction:
-            parsedRestrictions.nativeTokenLimitPerTransaction,
-            startTimestamp: RawDateSchema.parse(parsedRestrictions.startDate),
-            endTimestamp: RawDateSchema.parse(parsedRestrictions.expirationDate),
-          };
-
-          encoded.push(
-            this.contractWrapper.readContract.interface.encodeFunctionData(
-              "setRoleRestrictions",
-              [roleRestrictions],
-            ),
-          );
-        }
-      }
-
-      // Perform multicall
       return Transaction.fromContractWrapper({
         contractWrapper: this.contractWrapper,
         method: "multicall",
         args: [encoded],
       });
     }
-  )
+  );
 }
