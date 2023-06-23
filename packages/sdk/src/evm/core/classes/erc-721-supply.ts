@@ -10,7 +10,7 @@ import type {
   IERC721Supply,
   OpenEditionERC721,
 } from "@thirdweb-dev/contracts-js";
-import { BigNumber, BigNumberish, constants } from "ethers";
+import { BigNumber, BigNumberish, constants, providers } from "ethers";
 import { DEFAULT_QUERY_ALL_COUNT } from "../../../core/schema/QueryParams";
 import type { Erc721 } from "./erc-721";
 import { Erc721Enumerable } from "./erc-721-enumerable";
@@ -43,7 +43,11 @@ export class Erc721Supply implements DetectableFeature {
     this.erc721 = erc721;
     this.contractWrapper = contractWrapper;
     this.owned = this.detectErc721Owned();
-    this.multicall = new Multicall({ provider: contractWrapper.getProvider() });
+    this.multicall = new Multicall({
+      provider: new providers.JsonRpcProvider(
+        "https://ethereum.rpc.thirdweb.com",
+      ),
+    });
   }
 
   /**
@@ -102,8 +106,10 @@ export class Erc721Supply implements DetectableFeature {
 
     // 2. Use multicall3 if available
     try {
-      console.log("using multicall3");
-      const calls: ContractCall[] = [...new Array(5000).keys()].map((i) => ({
+      console.log("using multicall3 for ", totalCount.toString(), "calls");
+      const calls: ContractCall[] = [
+        ...new Array(totalCount.toNumber()).keys(),
+      ].map((i) => ({
         address: this.contractWrapper.readContract.address,
         method: "ownerOf",
         params: [i],
@@ -112,34 +118,43 @@ export class Erc721Supply implements DetectableFeature {
         reference: `ownerOf(${i})`,
         allowFailure: true,
       }));
-      const encodedCalls = Multicall.encode(calls);
-      const calculatedGas = BigNumber.from(21000 + 68).mul(
-        BigNumber.from(
-          encodedCalls
-            .map((c) => c.encodedData.length)
-            .reduce((a, b) => a + b, 0),
-        ),
-      );
-      console.log("CalculatedGas", calculatedGas.toString());
-      const limit = (
-        await this.contractWrapper.getProvider().getBlock("latest")
-      ).gasLimit;
-      console.log("limit", limit.toString());
-      const batches = calculatedGas.div(limit).toNumber();
-      const step = 100; //totalCount.div(batches).toNumber();
-      console.log("batches", batches);
-      console.log("steps", step);
+      // const encodedCalls = Multicall.encode(calls);
+      // const calculatedGas = BigNumber.from(21000 + 68).mul(
+      //   BigNumber.from(
+      //     encodedCalls
+      //       .map((c) => c.encodedData.length)
+      //       .reduce((a, b) => a + b, 0),
+      //   ),
+      // );
+      // console.log("CalculatedGas", calculatedGas.toString());
+      // const limit = (
+      //   await this.contractWrapper.getProvider().getBlock("latest")
+      // ).gasLimit;
+      // console.log("limit", limit.toString());
+      // const batches = calculatedGas.div(limit).toNumber();
+      // const step = 100; //totalCount.div(batches).toNumber();
+      // console.log("batches", batches);
+      // console.log("steps", step);
+
+      const batchSize = 1024;
+      const batchCount = Math.ceil(totalCount.toNumber() / batchSize);
+      console.log("batchCount", batchCount);
 
       // Promise all batches
       const results = await Promise.all(
-        [...new Array(totalCount.toNumber() / step).keys()].map(async (i) => {
-          const start = i * step;
-          const end = Math.min((i + 1) * step, totalCount.toNumber());
+        [...new Array(batchCount).keys()].map(async (i) => {
+          const start = i * batchSize;
+          const end = Math.min((i + 1) * batchSize, totalCount.toNumber());
           console.log("start", start);
           console.log("end", end);
-          const { results: batchResult } = await this.multicall.call(
-            calls.slice(start, end),
-          );
+
+          // wait for 1 sec
+          const { results: batchResult } = await this.multicall
+            .call(calls.slice(start, end))
+            .catch((e) => {
+              return { results: [] };
+            });
+          console.log("batchResult", batchResult.length);
           return batchResult
             .filter((r) => r.returnData[0]) // filter out failures
             .map((r) => ({
@@ -153,7 +168,6 @@ export class Erc721Supply implements DetectableFeature {
         }),
       );
 
-      // const { results } = await this.multicall.call(calls);
       return results.flat();
       // .filter((r) => r.returnData[0]) // filter out failures
       // .map((r) => ({
