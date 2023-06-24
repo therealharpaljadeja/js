@@ -1,5 +1,15 @@
 # @thirdweb-dev/react-core
 
+## 3.14.3
+
+### Patch Changes
+
+- [#1235](https://github.com/thirdweb-dev/js/pull/1235) [`1d76334d`](https://github.com/thirdweb-dev/js/commit/1d76334dd3884703629835422f241d2825128f6f) Thanks [@nachoiacovino](https://github.com/nachoiacovino)! - Fix required type for address on useSmartWalletsForAddress
+
+- Updated dependencies [[`536b0f12`](https://github.com/thirdweb-dev/js/commit/536b0f1240ab446aac22cf547a4e09e73ee6bf7b), [`b626782b`](https://github.com/thirdweb-dev/js/commit/b626782b0e8c6b76673472d3aee1c802dfb11b5f), [`d498c79a`](https://github.com/thirdweb-dev/js/commit/d498c79a911d478077dfb8a2490eb1bf91523186)]:
+  - @thirdweb-dev/wallets@0.3.3
+  - @thirdweb-dev/sdk@3.10.25
+
 ## 3.14.2
 
 ### Patch Changes

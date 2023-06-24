@@ -1,5 +1,14 @@
 # thirdweb
 
+## 0.10.26
+
+### Patch Changes
+
+- [#1240](https://github.com/thirdweb-dev/js/pull/1240) [`1c7264b4`](https://github.com/thirdweb-dev/js/commit/1c7264b40330d068ece67df537a0f5db0f6aedca) Thanks [@Marfuen](https://github.com/Marfuen)! - Small bug fix for updating packages using --nightly
+
+- Updated dependencies [[`d498c79a`](https://github.com/thirdweb-dev/js/commit/d498c79a911d478077dfb8a2490eb1bf91523186)]:
+  - @thirdweb-dev/sdk@3.10.25
+
 ## 0.10.25
 
 ### Patch Changes

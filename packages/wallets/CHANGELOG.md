@@ -1,5 +1,43 @@
 # @thirdweb-dev/wallets
 
+## 0.3.3
+
+### Patch Changes
+
+- [#1237](https://github.com/thirdweb-dev/js/pull/1237) [`536b0f12`](https://github.com/thirdweb-dev/js/commit/536b0f1240ab446aac22cf547a4e09e73ee6bf7b) Thanks [@iketw](https://github.com/iketw)! - [React] Add Rainbow Wallet (implementing the WalletConnect wallet)
+
+  ```javascript
+  import { ThirdwebProvider, rainbowWallet } from "@thirdweb-dev/react";
+
+  const activeChain = "ethereum";
+
+  <ThirdwebProvider
+    activeChain={activeChain}
+    supportedWallets={[rainbowWallet()]}
+  >
+    <App />
+  </ThirdwebProvider>;
+  ```
+
+- [#1236](https://github.com/thirdweb-dev/js/pull/1236) [`b626782b`](https://github.com/thirdweb-dev/js/commit/b626782b0e8c6b76673472d3aee1c802dfb11b5f) Thanks [@iketw](https://github.com/iketw)! - [Wallets/React] Add Trust Wallet
+
+  ```javascript
+  import { ThirdwebProvider, trustWallet } from "@thirdweb-dev/react";
+
+  const activeChain = "mumbai";
+
+  <ThirdwebProvider
+    activeChain={activeChain}
+    autoSwitch={true}
+    supportedWallets={[trustWallet()]}
+  >
+    <App />
+  </ThirdwebProvider>;
+  ```
+
+- Updated dependencies [[`d498c79a`](https://github.com/thirdweb-dev/js/commit/d498c79a911d478077dfb8a2490eb1bf91523186)]:
+  - @thirdweb-dev/sdk@3.10.25
+
 ## 0.3.2
 
 ### Patch Changes

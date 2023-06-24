@@ -1,5 +1,11 @@
 # @thirdweb-dev/sdk
 
+## 3.10.25
+
+### Patch Changes
+
+- [#1233](https://github.com/thirdweb-dev/js/pull/1233) [`d498c79a`](https://github.com/thirdweb-dev/js/commit/d498c79a911d478077dfb8a2490eb1bf91523186) Thanks [@nkrishang](https://github.com/nkrishang)! - Fix smartWalletFactory.getAllEvents
+
 ## 3.10.24
 
 ### Patch Changes
